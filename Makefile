@@ -1,19 +1,10 @@
-CC = clang
-CFLAGS = -Wextra -Wall -Werror -pedantic
+all: server client
 
-all: server client shmem_daemon shmem_daemon_client
+server: shmem_daemon.c misc.h
+	gcc -ansi -Wall -Wextra -D _GNU_SOURCE shmem_daemon.c -o server -g
 
-server: shared_memory_server.c
-	$(CC) shared_memory_server.c $(CFLAGS) -o server
-
-client: shared_memory_client.c
-	$(CC) shared_memory_client.c $(CFLAGS) -o client
-
-shmem_daemon: shmem_daemon.c
-	$(CC) shmem_daemon.c $(CFLAGS) -o shmem_daemon
-
-shmem_daemon_client: shmem_daemon_client.c
-		$(CC) shmem_daemon_client.c $(CFLAGS) -o shmem_daemon_client
+client: shared_memory_client.c misc.h
+	gcc -ansi -Wall -Wextra -D _GNU_SOURCE shared_memory_client.c -o client -g
 
 clean:
-	rm *.o* server client shmem_daemon shmem_daemon_client -rf
+	rm -f server client

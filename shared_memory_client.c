@@ -5,64 +5,99 @@
 #include <sys/sem.h>
 #include <sys/shm.h>
 #include <unistd.h>
+#include <string.h>
 
-#define NUMSEMS 3
-#define RES_FREE 2
-typedef struct {
-    int a, b;
-    long result;
-    pid_t client;
-} mem_t;
+#include "misc.h"
 
 key_t key;
 int shmid;
 int semid;
 
 mem_t* data;
-struct sembuf use_resource[1] = {{RES_FREE, -1, 0}};
 struct sembuf free_resource[1] = {{RES_FREE, 1, 0}};
 struct sembuf wakeup_server[1] = {{0, 1, 0}};
 struct sembuf wait_server[1] = {{1, -1, 0}};
-int main()
+int main(int argc, char** argv)
 {
-    int a, b;
-    long result;
+    size_t writed;
+	size_t file_name_length;
     pid_t my_pid;
     my_pid = getpid();
     printf("My pid = %d\n", (int)my_pid);
     key = ftok("/bin/ls", '1');
     shmid = shmget(key, sizeof(mem_t), 0);
     semid = semget(key, NUMSEMS, 0);
-    if ((shmid == -1) || (semid == -1)) {
+    if ((shmid == -1) || (semid == -1))
+    {
+        perror("kek");
         printf("ipc get failed\n");
         return 1;
     }
 
     data = (mem_t*)shmat(shmid, NULL, 0);
-    if (data == (mem_t*)(-1)) {
+    if (data == (mem_t*)(-1))
+    {
+        perror("kek");
         printf("shmat failed\n");
         return 2;
     }
 
+    if(argc < 2)
+    {
+        fprintf(stdout, "invalid arguments\n");
+        return 1;
+    }
+    printf("Input file name>: %s\n", argv[1]);
 
-    while (!feof(stdin)) {
-        printf("Input >:\n");
-        scanf("%d %d", &a, &b);
-
-        semop(semid, use_resource, 1);
-
-        data->a = a;
-        data->b = b;
-        data->client = my_pid;
-
+    writed = 0;
+	file_name_length = strlen(argv[1]);
+    data->pk_type = PK_SEND_FILENAME;
+    while(writed <= file_name_length)
+    {
+        memset(data->data, 0, BUF_SIZE);
+        strncpy(data->data, argv[1] + writed, BUF_SIZE);
         semop(semid, wakeup_server, 1);
         semop(semid, wait_server, 1);
-
-        result = data->result;
-
-        semop(semid, free_resource, 1);
-        printf("Result >: %ld\n", result);
+        if(data->pk_type == PK_ERROR)
+        {
+            fprintf(stderr, "server error %s", data->data);
+            return 1;
+        }
+        if(data->pk_type != PK_OK)
+        {
+            fprintf(stderr, "something wrong\n");
+            return 1;
+        }
+        writed += BUF_SIZE;
     }
+    data->pk_type = PK_FILENAME_OK;
+    semop(semid, wakeup_server, 1);
+    semop(semid, wait_server, 1);
+    if(data->pk_type == PK_ERROR)
+    {
+        fprintf(stderr, "server error\n");
+        return 1;
+    }
+    while(data->pk_type == PK_SEND_DATA)
+    {
+        fprintf(stdout, "%s", data->data);
+        data->pk_type = PK_OK;
+        semop(semid, wakeup_server, 1);
+        semop(semid, wait_server, 1);
+        if(data->pk_type == PK_ERROR)
+        {
+            fprintf(stderr, "server error\n");
+            return 1;
+        }
+    }
+    if(data->pk_type != PK_EOF)
+    {
+        fprintf(stderr, "server error\n");
+        return 1;
+    }
+    fprintf(stdout, "%s", data->data);
+
+    semop(semid, free_resource, 1);
     shmdt(data);
     return 0;
 }
