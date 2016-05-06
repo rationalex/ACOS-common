@@ -148,6 +148,7 @@ int main(int argc, char** argv)
                 arr[i].free = 2;
                 arr[i].desc = acc_ret;
                 pthread_cond_signal(arr[i].cond);
+            	pthread_mutex_unlock(&(arr[i].mutex));
                 break;
             }
             pthread_mutex_unlock(&(arr[i].mutex));
