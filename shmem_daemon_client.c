@@ -20,7 +20,8 @@ struct sembuf wait_server[1] = {{1, -1, 0}};
 int main(int argc, char** argv)
 {
     size_t writed;
-	size_t file_name_length;
+	  size_t file_name_length;
+
     pid_t my_pid;
     my_pid = getpid();
     printf("My pid = %d\n", (int)my_pid);
@@ -29,16 +30,14 @@ int main(int argc, char** argv)
     semid = semget(key, NUMSEMS, 0);
     if ((shmid == -1) || (semid == -1))
     {
-        perror("kek");
-        printf("ipc get failed\n");
+        perror("ipc get failed");
         return 1;
     }
 
     data = (mem_t*)shmat(shmid, NULL, 0);
     if (data == (mem_t*)(-1))
     {
-        perror("kek");
-        printf("shmat failed\n");
+        perror("shmat failed\n");
         return 2;
     }
 
@@ -47,10 +46,12 @@ int main(int argc, char** argv)
         fprintf(stdout, "invalid arguments\n");
         return 1;
     }
+
     printf("Input file name>: %s\n", argv[1]);
 
     writed = 0;
-	file_name_length = strlen(argv[1]);
+
+    file_name_length = strlen(argv[1]);
     data->pk_type = PK_SEND_FILENAME;
     while(writed <= file_name_length)
     {
@@ -75,7 +76,7 @@ int main(int argc, char** argv)
     semop(semid, wait_server, 1);
     if(data->pk_type == PK_ERROR)
     {
-        fprintf(stderr, "server error\n");
+        fprintf(stderr, "server error %s\n", data->data);
         return 1;
     }
     while(data->pk_type == PK_SEND_DATA)

@@ -16,8 +16,8 @@
 #include "misc.h"
 
 key_t key;
-int shmid;
-int semid;
+int shmid = -1;
+int semid = -1;
 
 mem_t* data;
 struct sembuf wait_client[1] = {{0, -1, 0}};
@@ -26,26 +26,29 @@ struct sembuf send_client[1] = {{1, 1, 0}};
 pid_t pid;
 int pid_file_fd;
 
-void usr1_handler(int sign)
+uid_t uid;
+size_t bytes_read;
+
+FILE *pid_file;
+FILE *client_file;
+
+char *file_name = NULL;
+char *tmp;
+
+void termination_handler(int sign __attribute__((unused)))
 {
-    if (sign == SIGUSR1)
-    {
-        syslog(LOG_NOTICE, "SIGUSR1 received");
-    }
-    signal(SIGUSR1, usr1_handler);
+    if (data != NULL) shmdt(&data);
+    if (pid_file != NULL) fclose(pid_file);
+    if (client_file != NULL) fclose(client_file);
+    if (file_name != NULL) free(file_name);
+    if (tmp != NULL) free(tmp);
+    if (semid != -1) semctl(semid, 0, IPC_RMID);
+    syslog(LOG_NOTICE, "signal received, shutting down\n");
+    exit(0);
 }
 
 int main()
 {
-    uid_t uid;
-    size_t bytes_read;
-
-    FILE *pid_file;
-    FILE *client_file;
-
-    char *file_name = NULL;
-    char *tmp;
-
     uid = geteuid();
     if (uid != 0)
     {
@@ -104,7 +107,7 @@ int main()
     pid_file = fdopen(pid_file_fd, "w");
     if (pid_file == NULL)
     {
-        syslog(LOG_ERR, "Could manage to open fd [%d]\n", pid_file_fd);
+        syslog(LOG_ERR, "Unable to open fd [%d]\n", pid_file_fd);
         return -1;
     }
 
@@ -115,6 +118,13 @@ int main()
     close(0);
     close(1);
     close(2);
+
+    if (signal (SIGINT, termination_handler) == SIG_IGN)
+      signal (SIGINT, SIG_IGN);
+    if (signal (SIGHUP, termination_handler) == SIG_IGN)
+      signal (SIGHUP, SIG_IGN);
+    if (signal (SIGTERM, termination_handler) == SIG_IGN)
+      signal (SIGTERM, SIG_IGN);
 
     /* now main code part starts */
     key = ftok(SHMEMPATH, SHMEMKEY);
@@ -170,19 +180,21 @@ int main()
          * previous packet was last one
          */
         case PK_FILENAME_OK:
+
             client_file = fopen(file_name, "r");
 
             if (client_file == NULL)
             {
                 data->pk_type = PK_ERROR;
-				memset(data->data, 0, BUF_SIZE);
+				        memset(data->data, 0, BUF_SIZE);
                 snprintf(data->data,
                          BUF_SIZE,
                          "Can't open file\n");
+                break;
             }
         /* now we need to send some data to client */
         case PK_OK:
-			memset(data->data, 0, BUF_SIZE);
+			      memset(data->data, 0, BUF_SIZE);
             if (feof(client_file))
             {
                 data->pk_type = PK_EOF;
@@ -208,6 +220,10 @@ int main()
             {
                 free(file_name);
             }
+            if (tmp != NULL)
+            {
+              free(tmp);
+            }
             break;
         /* if packet type isn't one of documentised */
         default:
@@ -219,6 +235,10 @@ int main()
             if (file_name != NULL)
             {
                 free(file_name);
+            }
+            if (tmp != NULL)
+            {
+              free(tmp);
             }
             break;
         }
