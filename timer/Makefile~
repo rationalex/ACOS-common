@@ -1,2 +1,0 @@
-main:
-	gcc timer.c -ansi -pedantic -Wall -Werr -lrt
